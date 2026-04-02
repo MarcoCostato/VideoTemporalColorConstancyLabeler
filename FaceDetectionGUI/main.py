@@ -1,0 +1,313 @@
+# main.py
+
+import sys
+import os
+import cv2
+import pandas as pd
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton, QFileDialog,
+    QScrollArea, QGridLayout, QStackedWidget, QMessageBox, QHBoxLayout
+)
+from PyQt5.QtGui import QPixmap, QImage
+from PyQt5.QtCore import Qt, pyqtSignal, QEvent
+from imageViewer import FullImageWindow
+
+# -----------------------
+# CONFIG
+# -----------------------
+THUMBNAIL_SIZE = (150, 150)
+GRID_COLUMNS = 6
+IMG_EXTENSIONS = ('.png', '.jpg', '.jpeg')
+
+
+# -----------------------
+# HELPERS
+# -----------------------
+def load_image_as_qpixmap(path, size=None):
+    """Load an image from path, resize, and return QPixmap."""
+    img = cv2.imread(path)
+    if img is None:
+        return QPixmap()
+    if size:
+        img = cv2.resize(img, size, interpolation=cv2.INTER_AREA)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    h, w, ch = img_rgb.shape
+    bytes_per_line = ch * w
+    qimg = QImage(img_rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
+    return QPixmap.fromImage(qimg)
+
+
+# -----------------------
+# WIDGETS
+# -----------------------
+class FileTile(QWidget):
+    clicked = pyqtSignal(str)
+
+    def __init__(self, folder_name, image_path, frames_path):
+        super().__init__()
+        self.frames_path = frames_path
+
+        layout = QVBoxLayout(self)
+        self.img_label = QLabel()
+        self.img_label.setAlignment(Qt.AlignCenter)
+        self.img_label.setPixmap(load_image_as_qpixmap(image_path, THUMBNAIL_SIZE))
+
+        label = QLabel(folder_name)
+        label.setAlignment(Qt.AlignCenter)
+
+        layout.addWidget(self.img_label)
+        layout.addWidget(label)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.frames_path)
+
+
+class ClickableImage(QLabel):
+    clicked = pyqtSignal(str)
+
+    def __init__(self, image_path):
+        super().__init__()
+        self.image_path = image_path
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit(self.image_path)
+
+
+# -----------------------
+# MAIN APP
+# -----------------------
+class MainApp(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Image Browser")
+        self.resize(1000, 800)
+
+        self.current_frames_path = None
+        self.video_folder = None
+
+        self.layout = QVBoxLayout(self)
+        self.btn_load_folder = QPushButton("Select Root Folder")
+        self.btn_load_folder.clicked.connect(self.load_folder)
+
+        self.stack = QStackedWidget()
+        self.layout.addWidget(self.btn_load_folder)
+        self.layout.addWidget(self.stack)
+
+        # Root view
+        self.root_layout = QGridLayout()
+        root_view = QWidget()
+        root_view.setLayout(self.root_layout)
+        root_scroll = QScrollArea()
+        root_scroll.setWidgetResizable(True)
+        root_scroll.setWidget(root_view)
+        self.stack.addWidget(root_scroll)
+
+        # Frames view
+        self.frames_layout = QGridLayout()
+        frames_grid_container = QWidget()
+        frames_grid_container.setLayout(self.frames_layout)
+
+    
+        # Top buttons row
+        self.btn_back = QPushButton("← Back to Folder View")
+        self.btn_back.clicked.connect(self.back_to_root)
+        self.btn_delete_all = QPushButton("🗑️ Delete All Boxes")
+        self.btn_delete_all.clicked.connect(self.delete_all_boxes)
+        
+        top_btns_layout = QHBoxLayout()
+        top_btns_layout.addWidget(self.btn_back)
+        top_btns_layout.addWidget(self.btn_delete_all)
+
+        frames_main_layout = QVBoxLayout()
+        frames_main_layout.addLayout(top_btns_layout)
+
+
+        frames_scroll = QScrollArea()
+        frames_scroll.setWidgetResizable(True)
+        frames_scroll.setWidget(frames_grid_container)
+        frames_main_layout.addWidget(frames_scroll)
+
+        frames_view = QWidget()
+        frames_view.setLayout(frames_main_layout)
+        self.stack.addWidget(frames_view)
+
+    # -----------------------
+    # FOLDER LOGIC
+    # -----------------------
+    def load_folder(self):
+        root_folder = QFileDialog.getExistingDirectory(self, "Select Root Folder")
+        if not root_folder:
+            return
+
+        # Clear grid
+        while self.root_layout.count():
+            child = self.root_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        row = col = 0
+        for entry in sorted(os.listdir(root_folder)):
+            folder_path = os.path.join(root_folder, entry)
+            # Updated path: now looking into "frames/boxes"
+            frames_path = os.path.join(
+                folder_path,
+                "processed_labeled_RGB_png",
+                "frames",
+                "faces"
+            )
+
+            if not os.path.isdir(frames_path):
+                continue
+
+            images = [f for f in os.listdir(frames_path) if f.lower().endswith(IMG_EXTENSIONS)]
+            if not images:
+                continue
+
+            preview_path = os.path.join(frames_path, sorted(images)[0])
+            tile = FileTile(entry, preview_path, frames_path)
+            tile.clicked.connect(self.open_frames_folder)
+            self.root_layout.addWidget(tile, row, col)
+
+            col += 1
+            if col >= GRID_COLUMNS:
+                col, row = 0, row + 1
+
+        self.stack.setCurrentIndex(0)
+
+    def open_frames_folder(self, frames_path):
+        self.current_frames_path = frames_path
+        self.video_folder = os.path.dirname(os.path.dirname(frames_path))
+
+        while self.frames_layout.count():
+            child = self.frames_layout.takeAt(0)
+            if child.widget():
+                child.widget().deleteLater()
+
+        row = col = 0
+        for img_file in sorted(os.listdir(frames_path)):
+            if not img_file.lower().endswith(IMG_EXTENSIONS):
+                continue
+
+            full_path = os.path.join(frames_path, img_file)
+            container = QWidget()
+            vbox = QVBoxLayout(container)
+            vbox.setContentsMargins(5, 5, 5, 5)
+            vbox.setSpacing(2)
+
+            thumb = ClickableImage(full_path)
+            thumb.setAlignment(Qt.AlignCenter)
+            thumb.setPixmap(load_image_as_qpixmap(full_path, THUMBNAIL_SIZE))
+            thumb.clicked.connect(lambda path=full_path: self.image_clicked(path))
+
+            name_label = QLabel(img_file)
+            name_label.setAlignment(Qt.AlignCenter)
+
+            vbox.addWidget(thumb)
+            vbox.addWidget(name_label)
+            self.frames_layout.addWidget(container, row, col)
+
+            col += 1
+            if col >= GRID_COLUMNS:
+                col, row = 0, row + 1
+
+        self.stack.setCurrentIndex(1)
+        
+    def delete_all_boxes(self):
+        if not self.video_folder:
+            QMessageBox.warning(self, "No Video Selected", "Please open a video folder first.")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Delete All Boxes",
+            "Are you sure you want to delete ALL boxes for this video?\n"
+            "(This will clear CSV contents and regenerate clean images.)",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        csv_dir = os.path.join(self.video_folder, "CSVs", "FacesCSVs")
+        frames_dir = os.path.join(self.video_folder, "frames")
+        faces_dir = os.path.join(frames_dir, "faces")
+        print (csv_dir, frames_dir, faces_dir, csv_dir)
+
+        # Clear CSV contents but keep files
+        if os.path.exists(csv_dir):
+            for f in os.listdir(csv_dir):
+                if f.endswith(".csv"):
+                    csv_path = os.path.join(csv_dir, f)
+                    try:
+                        pd.DataFrame(columns=['y1', 'x1', 'y2', 'x2']).to_csv(csv_path, index=False)
+                    except Exception as e:
+                        print(f"Error clearing {csv_path}: {e}")
+
+        # Ensure faces dir exists
+        os.makedirs(faces_dir, exist_ok=True)
+
+        # Overwrite faces/ images with the original frames (no boxes)
+        for f in os.listdir(frames_dir):
+            if f.lower().endswith(('.png', '.jpg', '.jpeg')):
+                src = os.path.join(frames_dir, f)
+                dst = os.path.join(faces_dir, f)
+                try:
+                    import shutil
+                    shutil.copy2(src, dst)
+                except Exception as e:
+                    print(f"Error copying {src} → {dst}: {e}")
+
+        QMessageBox.information(self, "Deleted", "All boxes have been deleted (CSVs cleared and images regenerated).")
+
+
+        if self.current_frames_path:
+            self.open_frames_folder(self.current_frames_path)
+
+    # -----------------------
+    # IMAGE LOGIC
+    # -----------------------
+    def image_clicked(self, image_path):
+        self.open_full_image(image_path)
+
+    def back_to_root(self):
+        self.stack.setCurrentIndex(0)
+
+    def open_full_image(self, thumbnail_path):
+        filename = os.path.basename(thumbnail_path)
+
+        # Go up 4 levels to get <Video> folder
+        video_folder = os.path.dirname(
+            os.path.dirname(
+                os.path.dirname(
+                    os.path.dirname(thumbnail_path)
+                )
+            )
+        )
+
+        processed_image_path = os.path.join(video_folder, "processed_labeled_RGB_png", "frames", filename)
+
+        if not os.path.exists(processed_image_path):
+            QMessageBox.warning(self, "Image Not Found", f"Processed image not found:\n{processed_image_path}")
+            return
+
+        viewer = FullImageWindow(processed_image_path)
+        viewer.exec_()
+
+
+
+    def changeEvent(self, event):
+        if event.type() == QEvent.ActivationChange:
+            if self.isActiveWindow() and self.stack.currentIndex() == 1:
+                if self.current_frames_path:
+                    self.open_frames_folder(self.current_frames_path)
+        super().changeEvent(event)
+
+
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    window = MainApp()
+    window.show()
+    sys.exit(app.exec_())
