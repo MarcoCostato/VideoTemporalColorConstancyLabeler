@@ -14,7 +14,9 @@ from find_patches.det_and_seg import detect, segment
 import pandas as pd
 import warnings
 
-import ipdb
+DEFAULT_WEIGHTS = os.path.join(
+    current_dir, "ultralytics", "runs", "detect", "train", "weights", "best.pt"
+)
 
 
 def annotate(image_path, out_file, segment_background, device, get_viz):
@@ -24,10 +26,11 @@ def annotate(image_path, out_file, segment_background, device, get_viz):
                      "White","Neutral 8", "Neutral 6.5", "Neutral 5", "Neutral 3.5", "Black"]
 
 
+    weights = weights_path or DEFAULT_WEIGHTS
     out_file_name = out_file if out_file is not None else image_path.split(".")[0] + ".csv"
     
-    detector = YOLO(r'C:\Users\marco\Desktop\TesiAWB\labeling\ColorChartLocalization\ultralytics\runs\detect\train\weights\best.pt') # Initialize the detection model
-    segmenter = YOLO(r'C:\Users\marco\Desktop\TesiAWB\labeling\ColorChartLocalization\ultralytics\runs\detect\train\weights\best.pt') if segment_background else None # Initialize the segmentation model if needed
+    detector = YOLO(weights) # Initialize the detection model
+    segmenter = YOLO(weights) if segment_background else None # Initialize the segmentation model if needed
 
     img_bgr = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
     img = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -102,7 +105,8 @@ def save_detected_boxes(image_path, out_dir, device="cpu"):
     Only bbox_y1, bbox_x1, bbox_y2, bbox_x2 are saved.
     
     """
-    detector = YOLO(r'C:\Users\marco\Desktop\TesiAWB\labeling\ColorChartLocalization\ultralytics\runs\detect\train\weights\best.pt')
+    weights = DEFAULT_WEIGHTS
+    detector = YOLO(weights)
     os.makedirs(out_dir, exist_ok=True)
 
     # Read image
@@ -141,25 +145,6 @@ def save_detected_boxes(image_path, out_dir, device="cpu"):
     print(f"[INFO] Saved: {out_file}")
 
 
-if __name__ == "__main__":
-    import sys
-    if len(sys.argv) < 3:
-        print("Usage: python save_boxes.py <images_folder> <weights_path>")
-        sys.exit(1)
-
-    images_folder = sys.argv[1]
-    weights_path = sys.argv[2]
-
-    detector = YOLO(weights_path)
-
-    # Walk through frames folder and save boxes in BoxesCSVs
-    for root, _, files in os.walk(images_folder):
-        if os.path.basename(root) == "frames":
-            boxes_csv_folder = os.path.join(os.path.dirname(root), "CSVs", "BoxesCSVs")
-            for fname in files:
-                if fname.lower().endswith(".png"):
-                    image_path = os.path.join(root, fname)
-                    save_detected_boxes(image_path, boxes_csv_folder, detector, device="cpu")
 
 if __name__ == "__main__":
     
