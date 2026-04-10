@@ -1,6 +1,6 @@
 # Video Temporal Color Constancy Labeler
 
-A semi-automatic pipeline for the creation of Video Temporal Color Constancy Datasets.
+A semi-automatic pipeline for the creation of RAW Video Temporal Color Constancy Datasets.
 
 ## How to use
 
@@ -93,3 +93,13 @@ If you intend to make your dataset public, it is highly suggested that any kind 
    python ./Labeling/datasetPreparation.py <input_base_dir> <output_base_dir>
    ```
    to finalize and generate the final dataset.
+
+## Known Issues
+
+1. The pipeline (especially the GUIs) requires a lot of disk space to run on medium to large datasets.
+2. The pipeline lacks a general GUI for the correction of Personal Data detections.
+
+## Important Contributions
+
+The pipeline relies heavily on the [ColorChartLocalization](https://github.com/LucaCogo/ColorChartLocalization) model by [Luca Cogo](https://github.com/LucaCogo) for the labeling step. A slightly modified version of his repo is contained inside the /Labeling/ColorChartLocalization directory.
+The pipeline was developed as part of my Master Thesis at the [Imaging and Vision Laboratory](http://www.ivl.disco.unimib.it/).
