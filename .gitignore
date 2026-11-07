@@ -1,0 +1,3 @@
+
+# External tool used only to decode our own .mcraw captures (not part of the pipeline)
+MCRawDecoder/
