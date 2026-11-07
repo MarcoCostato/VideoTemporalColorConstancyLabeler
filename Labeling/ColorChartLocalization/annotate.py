@@ -26,7 +26,7 @@ def annotate(image_path, out_file, segment_background, device, get_viz):
                      "White","Neutral 8", "Neutral 6.5", "Neutral 5", "Neutral 3.5", "Black"]
 
 
-    weights = weights_path or DEFAULT_WEIGHTS
+    weights = DEFAULT_WEIGHTS
     out_file_name = out_file if out_file is not None else image_path.split(".")[0] + ".csv"
     
     detector = YOLO(weights) # Initialize the detection model
