@@ -6,7 +6,7 @@ A semi-automatic pipeline for the creation of RAW Video Temporal Color Constancy
 
 ### Prerequisites:
 
-The pipeline works by leveraging a few assumptions on the input data. Briefly:\
+The pipeline works by leveraging a few assumptions on the input data. Briefly:
 
 1. Each frame is affected by a single illuminant (weak assumption, the more uniform the illuminant in each frame the more precise is the label);
 2. While the illuminant can change during the sequence, the change should be as smooth as possible;
